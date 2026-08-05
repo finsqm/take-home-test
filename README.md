@@ -39,23 +39,6 @@ docker compose down         # stop (add -v to also drop the Postgres/Tempo volum
 
 The app runs its own schema migrations on startup, so there's nothing else to set up.
 
-### Tracing
-
-The app is instrumented with OpenTelemetry and exports traces via OTLP to a local [Grafana
-Tempo](https://grafana.com/oss/tempo/) instance, viewable in Grafana:
-
-1. `docker compose up --build`
-2. Exercise the API (e.g. `./scripts/ingest-example.sh`)
-3. Open [http://localhost:3001/explore](http://localhost:3001/explore) (no login required), pick the
-   **Tempo** datasource, and search - e.g. TraceQL `{resource.service.name="take-home-test"}`
-
-A single `POST /ingest` produces **one connected trace** spanning the whole pipeline: the HTTP
-request, the `ingestion.process` job (running later, on pg-boss's polling loop), and the
-`email.process` job it triggers - each a child of the last, with `db.query` and
-`geocode.lookupPostcode` nested underneath. The trace context is captured on the `raw_form` row
-at ingest time (`trace_context` column) so the ingestion job - which has no HTTP request of its
-own - can recover and re-link into it, even across a `/retry` that happens long after the
-original request's span has ended.
 
 ### Example requests
 
@@ -81,3 +64,18 @@ Two scripts wrap the above into end-to-end demos, including polling for the asyn
 ./scripts/ingest-example.sh   # happy path: ingest -> validate -> geocode -> store
 ./scripts/dlq-example.sh      # failure path: schema violation -> non-retryable DLQ
 ```
+
+### Tracing
+
+The app is instrumented with OpenTelemetry and exports traces via OTLP to a local [Grafana
+Tempo](https://grafana.com/oss/tempo/) instance, viewable in Grafana:
+
+1. `docker compose up --build`
+2. Exercise the API (e.g. `./scripts/ingest-example.sh`)
+3. Open [http://localhost:3001/explore](http://localhost:3001/explore) (no login required), pick the
+   **Tempo** datasource, and search - e.g. TraceQL `{resource.service.name="take-home-test"}`
+
+A single `POST /ingest` produces one connected trace spanning the whole pipeline: the HTTP
+request, the `ingestion.process` job (running later, on pg-boss's polling loop), and the
+`email.process` job it triggers - each a child of the last, with `db.query` and
+`geocode.lookupPostcode` nested underneath.
