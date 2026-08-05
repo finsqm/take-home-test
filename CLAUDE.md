@@ -13,6 +13,10 @@ Key correctness requirements from the brief (README.md) that any implementation 
 - Failed steps (schema validation, geocoding, email, db) should be capturable and retryable via something like a `/retry` endpoint / DLQ, without losing the original data, so a code fix can be deployed and the form reprocessed.
 - Use a real database (schema design is part of what's being evaluated), not an in-memory mock.
 
+## Tasks
+
+Tasks are listed in TODO.md. The end-to-end tests should be written first as they will help to clarify the overall API and structure, and they should fail until implemented. Implementation should follow a test-driven-development approach with unit tests for each TODO in the implementation section. Note that the overall architecture will be asynchronous so the end-to-end tests should account for that.
+
 ## Commands
 
 ```bash
