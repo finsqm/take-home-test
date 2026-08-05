@@ -49,10 +49,13 @@ Tempo](https://grafana.com/oss/tempo/) instance, viewable in Grafana:
 3. Open [http://localhost:3001/explore](http://localhost:3001/explore) (no login required), pick the
    **Tempo** datasource, and search - e.g. TraceQL `{resource.service.name="take-home-test"}`
 
-Each incoming HTTP request gets its own trace (`POST /ingest`, `GET /forms/:applicationReference`,
-etc. via auto-instrumentation), and each async job run gets its own trace too (`ingestion.process`,
-`email.process`), since those run on pg-boss's polling loop rather than inside an HTTP request. Every
-`db.query` call and the `geocode.lookupPostcode` provider call are nested underneath as child spans.
+A single `POST /ingest` produces **one connected trace** spanning the whole pipeline: the HTTP
+request, the `ingestion.process` job (running later, on pg-boss's polling loop), and the
+`email.process` job it triggers - each a child of the last, with `db.query` and
+`geocode.lookupPostcode` nested underneath. The trace context is captured on the `raw_form` row
+at ingest time (`trace_context` column) so the ingestion job - which has no HTTP request of its
+own - can recover and re-link into it, even across a `/retry` that happens long after the
+original request's span has ended.
 
 ### Example requests
 

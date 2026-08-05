@@ -1,12 +1,12 @@
 import { withAdvisoryLock } from "../db/client";
-import { getRawFormBySessionId } from "../db/rawForm";
+import { getRawFormBySessionId, RawFormRecord } from "../db/rawForm";
 import { findTransformedForm, insertTransformedForm } from "../db/transformedForm";
 import { writeDlqEntry, deleteDlqEntry } from "../db/dlq";
 import { validateIngestedForm } from "../forms/validate";
 import { transformForm } from "../forms/transform";
 import { lookupPostcode } from "../providers/idealpostcodes";
 import { getBoss, EMAIL_QUEUE } from "../queue/boss";
-import { withSpan, withRootSpan } from "../tracer";
+import { withSpan, withLinkedSpan, isolated, currentTraceParent } from "../tracer";
 
 export type IngestionJobData = {
 	sessionId: string;
@@ -18,15 +18,34 @@ function errorMessage(err: unknown): string {
 }
 
 export async function processIngestionJob(data: IngestionJobData): Promise<void> {
-	await withRootSpan(
-		"ingestion.process",
-		{ "app.application_reference": data.applicationReference, "app.session_id": data.sessionId },
-		() => withAdvisoryLock(data.applicationReference, () => processLocked(data))
-	);
+	// Isolated up front, before the raw_form lookup below - that lookup itself must not
+	// inherit whatever stale context the polling timer captured (see isolated()'s comment).
+	await isolated(async () => {
+		const { sessionId, applicationReference } = data;
+
+		let raw: RawFormRecord | undefined;
+		try {
+			raw = await getRawFormBySessionId(sessionId);
+		} catch (err) {
+			await dlq(data, true, `failed to load raw form: ${errorMessage(err)}`);
+			return;
+		}
+
+		// The raw_form row (written synchronously by /ingest) carries the traceparent of the
+		// request that created it, so this job's trace links back to that request's trace
+		// even though it's running later, on pg-boss's polling loop, with no HTTP context of
+		// its own.
+		await withLinkedSpan(
+			"ingestion.process",
+			{ "app.application_reference": applicationReference, "app.session_id": sessionId },
+			raw?.traceContext,
+			() => withAdvisoryLock(applicationReference, () => processLocked(data, raw))
+		);
+	});
 }
 
-async function processLocked(data: IngestionJobData): Promise<void> {
-	const { sessionId, applicationReference } = data;
+async function processLocked(data: IngestionJobData, raw: RawFormRecord | undefined): Promise<void> {
+	const { applicationReference } = data;
 
 	// The 3rd party may redeliver the same application under a new session_id - once it
 	// has been fully processed, later redeliveries are no-ops.
@@ -35,20 +54,12 @@ async function processLocked(data: IngestionJobData): Promise<void> {
 		return;
 	}
 
-	let rawPayload: unknown;
-	try {
-		rawPayload = await getRawFormBySessionId(sessionId);
-	} catch (err) {
-		await dlq(data, true, `failed to load raw form: ${errorMessage(err)}`);
-		return;
-	}
-
-	if (rawPayload === undefined) {
+	if (raw === undefined) {
 		await dlq(data, true, "no raw_form row found for this session_id");
 		return;
 	}
 
-	const validation = validateIngestedForm(rawPayload);
+	const validation = validateIngestedForm(raw.payload);
 	if (!validation.success) {
 		await dlq(data, false, `schema validation failed: ${validation.reason}`);
 		return;
@@ -94,6 +105,10 @@ async function processLocked(data: IngestionJobData): Promise<void> {
 		from: "forms@take-home-test.example",
 		subject: `New registration received: ${applicationReference}`,
 		body: `A new registration form (${applicationReference}) has been successfully processed.`,
+		// Captured while ingestion.process is still the active span, so email.process
+		// (also linked via traceparent, see consumers/email.ts) becomes its child, giving one
+		// continuous trace: HTTP request -> ingestion job -> email job.
+		traceContext: currentTraceParent(),
 	});
 }
 

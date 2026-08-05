@@ -4,6 +4,7 @@ import { findTransformedForm } from "./db/transformedForm";
 import { getDlqEntry } from "./db/dlq";
 import { getBoss, INGESTION_QUEUE, EMAIL_QUEUE } from "./queue/boss";
 import { startConsumers } from "./consumers";
+import { currentTraceParent } from "./tracer";
 
 const app = express();
 
@@ -14,7 +15,7 @@ app.post("/ingest", async (req: Request, res: Response) => {
     const applicationReference = req.body?.application_reference;
 
     try {
-        await insertRawForm(sessionId, applicationReference, req.body);
+        await insertRawForm(sessionId, applicationReference, req.body, currentTraceParent());
 
         // Idempotent/memoized - only the very first call actually registers the workers.
         await startConsumers();

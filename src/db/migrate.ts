@@ -9,6 +9,7 @@ export async function up(databaseUrl: string): Promise<void> {
 				session_id TEXT NOT NULL UNIQUE,
 				application_reference TEXT NOT NULL,
 				payload JSONB NOT NULL,
+				trace_context TEXT,
 				received_at TIMESTAMPTZ NOT NULL DEFAULT now()
 			);
 

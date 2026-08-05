@@ -31,7 +31,7 @@ const jobData = { sessionId: personOne.session_id, applicationReference: personO
 
 describe("processIngestionJob", () => {
 	beforeEach(() => {
-		mockGetRawForm.mockReset().mockResolvedValue(personOne);
+		mockGetRawForm.mockReset().mockResolvedValue({ payload: personOne });
 		mockFindTransformed.mockReset().mockResolvedValue(undefined);
 		mockInsertTransformed.mockReset().mockResolvedValue(true);
 		mockWriteDlq.mockReset().mockResolvedValue(undefined);
@@ -46,7 +46,8 @@ describe("processIngestionJob", () => {
 
 		await processIngestionJob(jobData);
 
-		expect(mockGetRawForm).not.toHaveBeenCalled();
+		// The raw form is still fetched first (to recover its trace context for linking the
+		// span), but no further processing happens once the duplicate check short-circuits.
 		expect(mockLookupPostcode).not.toHaveBeenCalled();
 		expect(mockInsertTransformed).not.toHaveBeenCalled();
 	});
@@ -63,7 +64,7 @@ describe("processIngestionJob", () => {
 	});
 
 	it("DLQs (non-retryable) when the raw payload fails schema validation", async () => {
-		mockGetRawForm.mockResolvedValue({ ...personOne, gender: "unspecified" });
+		mockGetRawForm.mockResolvedValue({ payload: { ...personOne, gender: "unspecified" } });
 
 		await processIngestionJob(jobData);
 

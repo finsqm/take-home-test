@@ -20,7 +20,7 @@ describe("database write failures route to a retryable DLQ", () => {
 
         dbClient.query.mockImplementation((sql: string) => {
             if (sql.startsWith("INSERT INTO raw_form")) return Promise.resolve([]);
-            if (sql.startsWith("SELECT payload FROM raw_form")) return Promise.resolve([{ payload: form }]);
+            if (sql.startsWith("SELECT payload, trace_context FROM raw_form")) return Promise.resolve([{ payload: form, trace_context: null }]);
             if (sql.startsWith("SELECT * FROM transformed_form")) return Promise.resolve([]); // not a duplicate
             if (sql.startsWith("INSERT INTO transformed_form")) return Promise.reject(new Error("simulated db failure"));
             return Promise.resolve([]);

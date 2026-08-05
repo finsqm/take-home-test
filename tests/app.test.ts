@@ -43,9 +43,11 @@ describe("POST /ingest", () => {
 
 		await request(app).post("/ingest").send(form);
 
+		// No OTel SDK is registered in this test process, so there's no active span to
+		// capture a traceparent from - trace_context is bound as null.
 		expect(mockQuery).toHaveBeenCalledWith(
 			expect.stringContaining("INSERT INTO raw_form"),
-			["session-1", "GRU-1-2026", expect.objectContaining(form)]
+			["session-1", "GRU-1-2026", expect.objectContaining(form), null]
 		);
 	});
 
