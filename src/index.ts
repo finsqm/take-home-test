@@ -1,3 +1,4 @@
+import "./telemetry";
 import app from "./app";
 import { up } from "./db/migrate";
 

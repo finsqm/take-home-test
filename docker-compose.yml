@@ -20,11 +20,40 @@ services:
     environment:
       DATABASE_URL: postgres://forms:forms@postgres:5432/forms
       PORT: 3000
+      OTEL_SERVICE_NAME: take-home-test
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
     ports:
       - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
+      tempo:
+        condition: service_started
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-target=all", "-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo.yaml
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200" # Tempo query API (used by Grafana)
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    volumes:
+      - ./observability/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    ports:
+      - "3001:3000" # Grafana UI (http://localhost:3001) - host app already uses :3000
+    depends_on:
+      - tempo
 
 volumes:
   pgdata:
+  tempo-data:

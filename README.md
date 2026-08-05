@@ -33,11 +33,26 @@ How to submit
 Requires Docker and Docker Compose.
 
 ```bash
-docker compose up --build   # starts Postgres + the app (app on :3000, Postgres on :5432)
-docker compose down         # stop (add -v to also drop the Postgres volume)
+docker compose up --build   # starts Postgres, Tempo, Grafana, and the app (app on :3000)
+docker compose down         # stop (add -v to also drop the Postgres/Tempo volumes)
 ```
 
 The app runs its own schema migrations on startup, so there's nothing else to set up.
+
+### Tracing
+
+The app is instrumented with OpenTelemetry and exports traces via OTLP to a local [Grafana
+Tempo](https://grafana.com/oss/tempo/) instance, viewable in Grafana:
+
+1. `docker compose up --build`
+2. Exercise the API (e.g. `./scripts/ingest-example.sh`)
+3. Open [http://localhost:3001/explore](http://localhost:3001/explore) (no login required), pick the
+   **Tempo** datasource, and search - e.g. TraceQL `{resource.service.name="take-home-test"}`
+
+Each incoming HTTP request gets its own trace (`POST /ingest`, `GET /forms/:applicationReference`,
+etc. via auto-instrumentation), and each async job run gets its own trace too (`ingestion.process`,
+`email.process`), since those run on pg-boss's polling loop rather than inside an HTTP request. Every
+`db.query` call and the `geocode.lookupPostcode` provider call are nested underneath as child spans.
 
 ### Example requests
 

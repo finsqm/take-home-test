@@ -1,4 +1,5 @@
 import { Pool, QueryResultRow } from "pg";
+import { withSpan } from "../tracer";
 
 let pool: Pool | undefined;
 
@@ -25,8 +26,12 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
 	text: string,
 	params?: unknown[]
 ): Promise<T[]> {
-	const result = await getPool().query<T>(text, params);
-	return result.rows;
+	// Span attribute is the SQL text only (placeholders like $1, not the bound values,
+	// which may contain PII such as email/DOB) - safe to export to a trace backend.
+	return withSpan("db.query", { "db.system": "postgresql", "db.statement": text }, async () => {
+		const result = await getPool().query<T>(text, params);
+		return result.rows;
+	});
 }
 
 // Postgres advisory locks are session-scoped, so the lock/unlock pair must run on the

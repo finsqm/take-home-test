@@ -6,6 +6,7 @@ import { validateIngestedForm } from "../forms/validate";
 import { transformForm } from "../forms/transform";
 import { lookupPostcode } from "../providers/idealpostcodes";
 import { getBoss, EMAIL_QUEUE } from "../queue/boss";
+import { withSpan, withRootSpan } from "../tracer";
 
 export type IngestionJobData = {
 	sessionId: string;
@@ -17,7 +18,11 @@ function errorMessage(err: unknown): string {
 }
 
 export async function processIngestionJob(data: IngestionJobData): Promise<void> {
-	await withAdvisoryLock(data.applicationReference, () => processLocked(data));
+	await withRootSpan(
+		"ingestion.process",
+		{ "app.application_reference": data.applicationReference, "app.session_id": data.sessionId },
+		() => withAdvisoryLock(data.applicationReference, () => processLocked(data))
+	);
 }
 
 async function processLocked(data: IngestionJobData): Promise<void> {
@@ -53,7 +58,9 @@ async function processLocked(data: IngestionJobData): Promise<void> {
 
 	let geo: { longitude: number; latitude: number };
 	try {
-		const geoResponse = await lookupPostcode(form.address.postcode);
+		const geoResponse = await withSpan("geocode.lookupPostcode", { "app.postcode": form.address.postcode }, () =>
+			lookupPostcode(form.address.postcode)
+		);
 		if (geoResponse.statusCode !== 200 || !geoResponse.body) {
 			throw new Error(`geocoding provider returned status ${geoResponse.statusCode}`);
 		}
