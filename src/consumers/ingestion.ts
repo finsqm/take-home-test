@@ -9,116 +9,107 @@ import { getBoss, EMAIL_QUEUE } from "../queue/boss";
 import { withSpan, withLinkedSpan, isolated, currentTraceParent } from "../tracer";
 
 export type IngestionJobData = {
-	sessionId: string;
-	applicationReference: string;
+    sessionId: string;
+    applicationReference: string;
 };
 
 function errorMessage(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
+    return err instanceof Error ? err.message : String(err);
 }
 
 export async function processIngestionJob(data: IngestionJobData): Promise<void> {
-	// Isolated up front, before the raw_form lookup below - that lookup itself must not
-	// inherit whatever stale context the polling timer captured (see isolated()'s comment).
-	await isolated(async () => {
-		const { sessionId, applicationReference } = data;
+    await isolated(async () => {
+        const { sessionId, applicationReference } = data;
 
-		let raw: RawFormRecord | undefined;
-		try {
-			raw = await getRawFormBySessionId(sessionId);
-		} catch (err) {
-			await dlq(data, true, `failed to load raw form: ${errorMessage(err)}`);
-			return;
-		}
+        let raw: RawFormRecord | undefined;
+        try {
+            raw = await getRawFormBySessionId(sessionId);
+        } catch (err) {
+            await dlq(data, true, `failed to load raw form: ${errorMessage(err)}`);
+            return;
+        }
 
-		// The raw_form row (written synchronously by /ingest) carries the traceparent of the
-		// request that created it, so this job's trace links back to that request's trace
-		// even though it's running later, on pg-boss's polling loop, with no HTTP context of
-		// its own.
-		await withLinkedSpan(
-			"ingestion.process",
-			{ "app.application_reference": applicationReference, "app.session_id": sessionId },
-			raw?.traceContext,
-			() => withAdvisoryLock(applicationReference, () => processLocked(data, raw))
-		);
-	});
+        await withLinkedSpan(
+            "ingestion.process",
+            { "app.application_reference": applicationReference, "app.session_id": sessionId },
+            raw?.traceContext,
+            () => withAdvisoryLock(applicationReference, () => processLocked(data, raw))
+        );
+    });
 }
 
 async function processLocked(data: IngestionJobData, raw: RawFormRecord | undefined): Promise<void> {
-	const { applicationReference } = data;
+    const { applicationReference } = data;
 
-	// The 3rd party may redeliver the same application under a new session_id - once it
-	// has been fully processed, later redeliveries are no-ops.
-	const alreadyProcessed = await findTransformedForm(applicationReference);
-	if (alreadyProcessed) {
-		return;
-	}
+    // The 3rd party may redeliver the same application under a new session_id - once it
+    // has been fully processed, later redeliveries are no-ops.
+    const alreadyProcessed = await findTransformedForm(applicationReference);
+    if (alreadyProcessed) {
+        return;
+    }
 
-	if (raw === undefined) {
-		await dlq(data, true, "no raw_form row found for this session_id");
-		return;
-	}
+    if (raw === undefined) {
+        await dlq(data, true, "no raw_form row found for this session_id");
+        return;
+    }
 
-	const validation = validateIngestedForm(raw.payload);
-	if (!validation.success) {
-		await dlq(data, false, `schema validation failed: ${validation.reason}`);
-		return;
-	}
+    const validation = validateIngestedForm(raw.payload);
+    if (!validation.success) {
+        await dlq(data, false, `schema validation failed: ${validation.reason}`);
+        return;
+    }
 
-	const form = validation.data;
+    const form = validation.data;
 
-	let geo: { longitude: number; latitude: number };
-	try {
-		const geoResponse = await withSpan("geocode.lookupPostcode", { "app.postcode": form.address.postcode }, () =>
-			lookupPostcode(form.address.postcode)
-		);
-		if (geoResponse.statusCode !== 200 || !geoResponse.body) {
-			throw new Error(`geocoding provider returned status ${geoResponse.statusCode}`);
-		}
-		geo = geoResponse.body;
-	} catch (err) {
-		await dlq(data, true, `geocoding failed: ${errorMessage(err)}`);
-		return;
-	}
+    let geo: { longitude: number; latitude: number };
+    try {
+        const geoResponse = await withSpan("geocode.lookupPostcode", { "app.postcode": form.address.postcode }, () =>
+            lookupPostcode(form.address.postcode)
+        );
+        if (geoResponse.statusCode !== 200 || !geoResponse.body) {
+            throw new Error(`geocoding provider returned status ${geoResponse.statusCode}`);
+        }
+        geo = geoResponse.body;
+    } catch (err) {
+        await dlq(data, true, `geocoding failed: ${errorMessage(err)}`);
+        return;
+    }
 
-	const transformed = transformForm(form, geo);
+    const transformed = transformForm(form, geo);
 
-	let inserted: boolean;
-	try {
-		inserted = await insertTransformedForm(transformed);
-	} catch (err) {
-		await dlq(data, true, `database write failed: ${errorMessage(err)}`);
-		return;
-	}
+    let inserted: boolean;
+    try {
+        inserted = await insertTransformedForm(transformed);
+    } catch (err) {
+        await dlq(data, true, `database write failed: ${errorMessage(err)}`);
+        return;
+    }
 
-	await deleteDlqEntry(applicationReference);
+    await deleteDlqEntry(applicationReference);
 
-	if (!inserted) {
-		// Another delivery won the race to store this application_reference first.
-		return;
-	}
+    if (!inserted) {
+        // Another delivery won the race to store this application_reference first.
+        return;
+    }
 
-	const boss = await getBoss();
-	await boss.send(EMAIL_QUEUE, {
-		applicationReference,
-		to: "happyforms@bots.com",
-		from: "forms@take-home-test.example",
-		subject: `New registration received: ${applicationReference}`,
-		body: `A new registration form (${applicationReference}) has been successfully processed.`,
-		// Captured while ingestion.process is still the active span, so email.process
-		// (also linked via traceparent, see consumers/email.ts) becomes its child, giving one
-		// continuous trace: HTTP request -> ingestion job -> email job.
-		traceContext: currentTraceParent(),
-	});
+    const boss = await getBoss();
+    await boss.send(EMAIL_QUEUE, {
+        applicationReference,
+        to: "happyforms@bots.com",
+        from: "forms@take-home-test.example",
+        subject: `New registration received: ${applicationReference}`,
+        body: `A new registration form (${applicationReference}) has been successfully processed.`,
+        traceContext: currentTraceParent(),
+    });
 }
 
 async function dlq(data: IngestionJobData, retryable: boolean, reason: string): Promise<void> {
-	await writeDlqEntry({
-		applicationReference: data.applicationReference,
-		sessionId: data.sessionId,
-		stage: "ingestion",
-		retryable,
-		reason,
-		payload: data,
-	});
+    await writeDlqEntry({
+        applicationReference: data.applicationReference,
+        sessionId: data.sessionId,
+        stage: "ingestion",
+        retryable,
+        reason,
+        payload: data,
+    });
 }
