@@ -3,25 +3,40 @@ import app from "../../src/app";
 import { fixtures, buildForm } from "./helpers/fixtures";
 import { waitFor } from "./helpers/poll";
 
-// src/db/client.ts doesn't exist yet. It's the required DB-access seam this suite
-// depends on: a single `query` export that all DB writes funnel through, so a write
-// failure can be forced deterministically here without the test suite needing to know
-// the real table schema. Until it exists, this whole file fails to load.
-jest.mock("../../src/db/client");
+jest.mock("../../src/db/client", () => {
+    const actual = jest.requireActual("../../src/db/client");
+    return {
+        ...actual,
+        query: jest.fn(),
+        withAdvisoryLock: jest.fn((_key: string, fn: () => Promise<unknown>) => fn()),
+    };
+});
+
 const dbClient = require("../../src/db/client") as { query: jest.Mock };
 
 describe("database write failures route to a retryable DLQ", () => {
-	it("routes to a retryable DLQ entry when the db write fails", async () => {
-		dbClient.query.mockRejectedValueOnce(new Error("simulated db failure"));
+    it("writes a retryable DLQ entry when the transformed_form insert fails", async () => {
+        const form = buildForm(fixtures.personOne);
 
-		const form = buildForm(fixtures.personOne);
-		await request(app).post("/ingest").send(form).expect(202);
+        dbClient.query.mockImplementation((sql: string) => {
+            if (sql.startsWith("INSERT INTO raw_form")) return Promise.resolve([]);
+            if (sql.startsWith("SELECT payload FROM raw_form")) return Promise.resolve([{ payload: form }]);
+            if (sql.startsWith("SELECT * FROM transformed_form")) return Promise.resolve([]); // not a duplicate
+            if (sql.startsWith("INSERT INTO transformed_form")) return Promise.reject(new Error("simulated db failure"));
+            return Promise.resolve([]);
+        });
 
-		const dlqEntry = await waitFor(
-			() => request(app).get(`/dlq/${form.application_reference}`),
-			(res) => res.status === 200
-		);
+        await request(app).post("/ingest").send(form).expect(202);
 
-		expect(dlqEntry.body).toMatchObject({ retryable: true });
-	});
+        const dlqCall = await waitFor(
+            async () => dbClient.query.mock.calls.find(([sql]: [string]) => sql.startsWith("INSERT INTO dlq")),
+            (call) => call !== undefined
+        );
+
+        const [, params] = dlqCall as [string, unknown[]];
+        expect(params[0]).toBe(form.application_reference); // application_reference
+        expect(params[2]).toBe("ingestion"); // stage
+        expect(params[3]).toBe(true); // retryable
+        expect(params[4]).toContain("database write failed"); // reason
+    });
 });
