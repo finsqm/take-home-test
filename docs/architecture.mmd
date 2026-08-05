@@ -1,0 +1,34 @@
+flowchart LR
+    provider([3rd-party provider])
+    formbot([FORM-BOT])
+    happyforms(["happyforms@bots.com"])
+
+    api["Express API"]
+    ingestConsumer["Ingestion consumer\n(validate, geocode, transform)"]
+    emailConsumer["Email consumer"]
+
+    geocode[["Geocoding API"]]
+    sendgrid[["Email API"]]
+
+    rawForm[("raw_form")]
+    transformedForm[("transformed_form")]
+    dlq[("dlq")]
+
+    provider -->|"POST /ingest"| api
+    api -->|store| rawForm
+    api -.->|enqueue| ingestConsumer
+
+    ingestConsumer -->|"read (locked)"| rawForm
+    ingestConsumer --> geocode
+    ingestConsumer -->|store| transformedForm
+    ingestConsumer -.->|enqueue| emailConsumer
+    ingestConsumer -->|fail| dlq
+
+    emailConsumer --> sendgrid
+    sendgrid --> happyforms
+    emailConsumer -->|fail| dlq
+
+    formbot -->|"GET /forms/:ref"| api
+    api -->|read| transformedForm
+
+    dlq -->|"POST /retry/:ref"| api
