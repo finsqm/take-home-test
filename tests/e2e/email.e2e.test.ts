@@ -16,6 +16,14 @@ describe("guaranteed email on successful transform", () => {
 			(res) => res.status === 200
 		);
 
+		// Storing the form only enqueues the confirmation email job (a separate queue with
+		// its own consumer, per the intended design) - it doesn't send it inline, so give
+		// that second hop a moment to actually be picked up and processed.
+		await waitFor(
+			async () => mockSendEmail.mock.calls.length,
+			(callCount) => callCount > 0
+		);
+
 		expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: "happyforms@bots.com" }));
 	});
 

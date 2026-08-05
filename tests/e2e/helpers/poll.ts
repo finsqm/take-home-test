@@ -4,7 +4,7 @@ export type PollOptions = {
 };
 
 export async function waitFor<T>(fetchFn: () => Promise<T>, predicate: (result: T) => boolean, options: PollOptions = {}): Promise<T> {
-	const { timeoutMs = 10000, intervalMs = 250 } = options;
+	const { timeoutMs = 5000, intervalMs = 100 } = options;
 	const deadline = Date.now() + timeoutMs;
 
 	while (true) {

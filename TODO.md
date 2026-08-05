@@ -10,17 +10,17 @@
     - [x] An error from the mock geocoding API results in a DLQ (retryable)
     - [x] An error from the mock sendgrid API results in a DLQ (retryable)
 - [ ] Implementation (test cases first, then implementation code)
-    - [ ] /ingest
-        - [ ] Write raw json to db and push ingestion job to queue (use pgboss to use postgres table as persistent queue)
-    - [ ] Consumer for ingestion job
-        - [ ] Take a lock on the application reference (we'll treat this as the unique ID for forms and the session ID as the unique ID for individual calls to /ingest)
-        - [ ] Check if form is a duplicate
-        - [ ] Validate raw json matches ingestion schema, push to DLQ (non-retryable) if fails
-        - [ ] Transform the form into the transformed_schema
-        - [ ] Enrich the form with geo data from idealpostcodes.ts, error case to DLQ (retyrable)
-        - [ ] Store the new form in transformed_schema
-        - [ ] Storing should also trigger a job in a new queue which will have a consumer to send emails
-    - [ ] Consumer to send emails
-        - [ ] Send email (using sendgrid mock)
-        - [ ] Error case to DLQ (retyrable)
+    - [x] /ingest
+        - [x] Write raw json to db and push ingestion job to queue (use pgboss to use postgres table as persistent queue)
+    - [x] Consumer for ingestion job
+        - [x] Take a lock on the application reference (we'll treat this as the unique ID for forms and the session ID as the unique ID for individual calls to /ingest)
+        - [x] Check if form is a duplicate
+        - [x] Validate raw json matches ingestion schema, push to DLQ (non-retryable) if fails
+        - [x] Transform the form into the transformed_schema
+        - [x] Enrich the form with geo data from idealpostcodes.ts, error case to DLQ (retyrable)
+        - [x] Store the new form in transformed_schema
+        - [x] Storing should also trigger a job in a new queue which will have a consumer to send emails
+    - [x] Consumer to send emails
+        - [x] Send email (using sendgrid mock)
+        - [x] Error case to DLQ (retyrable)
 
