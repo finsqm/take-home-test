@@ -27,3 +27,39 @@ How to submit
 - The email sent to you has a unique submission link, which will take you to a submission portal
 - Please submit on the portal: a link to your repository and a link to a 5 minute (max) loom which explains your code and some of your design decisions
 - If possible, please submit within 4-5 days of receiving the task
+
+## Running locally
+
+Requires Docker and Docker Compose.
+
+```bash
+docker compose up --build   # starts Postgres + the app (app on :3000, Postgres on :5432)
+docker compose down         # stop (add -v to also drop the Postgres volume)
+```
+
+The app runs its own schema migrations on startup, so there's nothing else to set up.
+
+### Example requests
+
+```bash
+# Ingest a form (fire-and-forget - processing happens asynchronously)
+curl -X POST http://localhost:3000/ingest \
+  -H "Content-Type: application/json" \
+  -d @src/forms/examples/person_one.json
+
+# Read back the transformed form once processing completes
+curl http://localhost:3000/forms/GRU-123089-2026
+
+# Check the dead-letter queue for a failed form
+curl http://localhost:3000/dlq/GRU-123089-2026
+
+# Retry a DLQ'd form (e.g. after a transient provider error, or a code fix for a schema issue)
+curl -X POST http://localhost:3000/retry/GRU-123089-2026
+```
+
+Two scripts wrap the above into end-to-end demos, including polling for the async result:
+
+```bash
+./scripts/ingest-example.sh   # happy path: ingest -> validate -> geocode -> store
+./scripts/dlq-example.sh      # failure path: schema violation -> non-retryable DLQ
+```
