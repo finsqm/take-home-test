@@ -46,3 +46,8 @@ Both provider mocks are randomized and async by design — any code calling them
 ## Testing
 
 Tests use `supertest` against the exported `app` (not a live server) plus `ts-jest`. `tests/app.test.ts` is currently a placeholder for the `/ingest` endpoint; TODO.md lists the end-to-end scenarios (duplicate handling, schema-mismatch → non-retryable DLQ, provider errors → retryable DLQ, successful transform → db write + email) that are expected to be covered as the implementation is built out.
+
+
+## General Guidance
+
+- Be concise when writing markdown documents and providing user feedback.

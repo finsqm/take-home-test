@@ -1,14 +1,14 @@
 # Tasks
 
-- [ ] Write end to end tests capturing top level requirements (should fail for now):
-    - [ ] A form with a valid schema is transformed and written to the transformed database table (will require endpoint to query database, and mock db implementation)
-    - [ ] A valid form sends an email to happyforms@bots.com (using mock sendgrid.ts)
-    - [ ] A form failing to match the schema pushes to a dead letter queue (non-retryable)
-    - [ ] A duplicate form does not get re-written
-    - [ ] A valid form gets lat and long data enriched by the mock geocoding API (idealpostcodes.ts)
-    - [ ] A database error results in a push to a dead letter queue (retryable)
-    - [ ] An error from the mock geocoding API results in a DLQ (retryable)
-    - [ ] An error from the mock sendgrid API results in a DLQ (retryable)
+- [x] Write end to end tests capturing top level requirements (should fail for now):
+    - [x] A form with a valid schema is transformed and written to the transformed database table (will require endpoint to query database, and mock db implementation)
+    - [x] A valid form sends an email to happyforms@bots.com (using mock sendgrid.ts)
+    - [x] A form failing to match the schema pushes to a dead letter queue (non-retryable)
+    - [x] A duplicate form does not get re-written
+    - [x] A valid form gets lat and long data enriched by the mock geocoding API (idealpostcodes.ts)
+    - [x] A database error results in a push to a dead letter queue (retryable)
+    - [x] An error from the mock geocoding API results in a DLQ (retryable)
+    - [x] An error from the mock sendgrid API results in a DLQ (retryable)
 - [ ] Implementation (test cases first, then implementation code)
     - [ ] /ingest
         - [ ] Write raw json to db and push ingestion job to queue (use pgboss to use postgres table as persistent queue)
