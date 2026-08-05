@@ -9,7 +9,7 @@
     - [x] A database error results in a push to a dead letter queue (retryable)
     - [x] An error from the mock geocoding API results in a DLQ (retryable)
     - [x] An error from the mock sendgrid API results in a DLQ (retryable)
-- [ ] Implementation (test cases first, then implementation code)
+- [x] Implementation (test cases first, then implementation code)
     - [x] /ingest
         - [x] Write raw json to db and push ingestion job to queue (use pgboss to use postgres table as persistent queue)
     - [x] Consumer for ingestion job
