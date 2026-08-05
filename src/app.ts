@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { query } from "./db/client";
+import { insertRawForm } from "./db/rawForm";
 import { findTransformedForm } from "./db/transformedForm";
 import { getDlqEntry } from "./db/dlq";
 import { getBoss, INGESTION_QUEUE, EMAIL_QUEUE } from "./queue/boss";
@@ -14,11 +14,7 @@ app.post("/ingest", async (req: Request, res: Response) => {
     const applicationReference = req.body?.application_reference;
 
     try {
-        await query(`INSERT INTO raw_form (session_id, application_reference, payload) VALUES ($1, $2, $3)`, [
-            sessionId,
-            applicationReference,
-            req.body,
-        ]);
+        await insertRawForm(sessionId, applicationReference, req.body);
 
         // Idempotent/memoized - only the very first call actually registers the workers.
         await startConsumers();
