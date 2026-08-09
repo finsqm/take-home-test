@@ -3,7 +3,6 @@ import { insertRawForm } from "./db/rawForm";
 import { findTransformedForm } from "./db/transformedForm";
 import { getDlqEntry } from "./db/dlq";
 import { getBoss, INGESTION_QUEUE, EMAIL_QUEUE } from "./queue/boss";
-import { startConsumers } from "./consumers";
 import { currentTraceParent } from "./tracer";
 
 const app = express();
@@ -16,11 +15,6 @@ app.post("/ingest", async (req: Request, res: Response) => {
 
     try {
         await insertRawForm(sessionId, applicationReference, req.body, currentTraceParent());
-
-        // Idempotent/memoized (see index.ts, which also calls this at boot) - this call is
-        // the belt-and-suspenders case for an instance whose consumers didn't start at boot
-        // for some reason; it's a no-op once they're already running.
-        await startConsumers();
 
         const boss = await getBoss();
         await boss.send(INGESTION_QUEUE, { sessionId, applicationReference });

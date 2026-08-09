@@ -12,10 +12,6 @@ jest.mock("../src/queue/boss", () => ({
 }));
 import { getBoss, INGESTION_QUEUE } from "../src/queue/boss";
 
-jest.mock("../src/consumers", () => ({
-	startConsumers: jest.fn().mockResolvedValue(undefined),
-}));
-
 const mockQuery = query as jest.MockedFunction<typeof query>;
 const mockGetBoss = getBoss as jest.MockedFunction<typeof getBoss>;
 const mockSend = jest.fn();

@@ -9,6 +9,22 @@ jest.mock("../../../src/providers/sendgrid");
 const mockLookupPostcode = lookupPostcode as jest.MockedFunction<typeof lookupPostcode>;
 const mockSendEmail = sendEmail as jest.MockedFunction<typeof sendEmail>;
 
+// Production starts consumers at process boot (see index.ts); these e2e tests exercise
+// src/app.ts directly without going through index.ts's main(), so they need their own
+// equivalent boot step. The import is deliberately deferred to inside the hook (not a
+// top-level import of this file) - this file is a setupFilesAfterEnv script, so it loads
+// and evaluates before the test file itself does. A top-level import here would pull in
+// src/consumers' full dependency chain (db/rawForm, db/transformedForm, db/dlq, db/client)
+// and cache their module instances before a test file's own jest.mock("db/client", ...)
+// (e.g. tests/e2e/db-error.e2e.test.ts) has even been registered - permanently binding
+// those modules to the real, unmocked db/client. Requiring it lazily inside the hook body
+// defers that require until every file's hooks run, by which point any test file's own
+// jest.mock calls (hoisted to the top of that file) have already been registered.
+beforeAll(async () => {
+	const { startConsumers } = require("../../../src/consumers") as typeof import("../../../src/consumers");
+	await startConsumers();
+});
+
 beforeEach(() => {
 	mockLookupPostcode.mockReset().mockResolvedValue({
 		statusCode: 200,
