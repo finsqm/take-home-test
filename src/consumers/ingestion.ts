@@ -1,4 +1,4 @@
-import { withAdvisoryLock } from "../db/client";
+import { withAdvisoryLock, withTransaction, pgBossExecutor } from "../db/client";
 import { getRawFormBySessionId, RawFormRecord } from "../db/rawForm";
 import { findTransformedForm, insertTransformedForm } from "../db/transformedForm";
 import { writeDlqEntry, deleteDlqEntry } from "../db/dlq";
@@ -77,30 +77,44 @@ async function processLocked(data: IngestionJobData, raw: RawFormRecord | undefi
 
     const transformed = transformForm(form, geo);
 
+    // Storing the transformed form, clearing any prior DLQ entry, and enqueueing the
+    // confirmation email job all happen in one Postgres transaction (a transactional
+    // outbox, using pg-boss's job table as the outbox) - otherwise a crash between the
+    // insert and the enqueue would commit the form but silently drop the guaranteed email,
+    // with no record that anything was ever wrong.
     let inserted: boolean;
     try {
-        inserted = await insertTransformedForm(transformed);
+        inserted = await withTransaction(async (client) => {
+            const wasInserted = await insertTransformedForm(transformed, client);
+            await deleteDlqEntry(applicationReference, client);
+
+            if (wasInserted) {
+                const boss = await getBoss();
+                await boss.send(
+                    EMAIL_QUEUE,
+                    {
+                        applicationReference,
+                        to: "happyforms@bots.com",
+                        from: "forms@take-home-test.example",
+                        subject: `New registration received: ${applicationReference}`,
+                        body: `A new registration form (${applicationReference}) has been successfully processed.`,
+                        traceContext: currentTraceParent(),
+                    },
+                    { db: pgBossExecutor(client) }
+                );
+            }
+
+            return wasInserted;
+        });
     } catch (err) {
         await dlq(data, true, `database write failed: ${errorMessage(err)}`);
         return;
     }
 
-    await deleteDlqEntry(applicationReference);
-
     if (!inserted) {
         // Another delivery won the race to store this application_reference first.
         return;
     }
-
-    const boss = await getBoss();
-    await boss.send(EMAIL_QUEUE, {
-        applicationReference,
-        to: "happyforms@bots.com",
-        from: "forms@take-home-test.example",
-        subject: `New registration received: ${applicationReference}`,
-        body: `A new registration form (${applicationReference}) has been successfully processed.`,
-        traceContext: currentTraceParent(),
-    });
 }
 
 async function dlq(data: IngestionJobData, retryable: boolean, reason: string): Promise<void> {

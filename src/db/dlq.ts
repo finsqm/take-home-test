@@ -1,4 +1,4 @@
-import { query } from "./client";
+import { query, Executor } from "./client";
 
 export type DlqStage = "ingestion" | "email";
 
@@ -53,6 +53,6 @@ export async function getDlqEntry(applicationReference: string): Promise<DlqEntr
 	return rows[0] ? toApiShape(rows[0]) : undefined;
 }
 
-export async function deleteDlqEntry(applicationReference: string): Promise<void> {
-	await query("DELETE FROM dlq WHERE application_reference = $1", [applicationReference]);
+export async function deleteDlqEntry(applicationReference: string, executor?: Executor): Promise<void> {
+	await query("DELETE FROM dlq WHERE application_reference = $1", [applicationReference], executor);
 }

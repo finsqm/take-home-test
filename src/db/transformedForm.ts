@@ -1,4 +1,4 @@
-import { query } from "./client";
+import { query, Executor } from "./client";
 
 type TransformedFormRow = {
 	session_id: string;
@@ -50,7 +50,7 @@ export async function findTransformedForm(applicationReference: string): Promise
 // Returns whether a row was actually inserted (false on a conflicting application_reference) -
 // callers use this to avoid double-triggering side effects like the confirmation email
 // under the rare race the advisory lock isn't already guarding against.
-export async function insertTransformedForm(form: TransformedFormSchema): Promise<boolean> {
+export async function insertTransformedForm(form: TransformedFormSchema, executor?: Executor): Promise<boolean> {
 	const rows = await query<{ id: number }>(
 		`INSERT INTO transformed_form (
 			session_id, application_reference, first_name, last_name, email, gender,
@@ -76,7 +76,8 @@ export async function insertTransformedForm(form: TransformedFormSchema): Promis
 			form.country,
 			form.longitude,
 			form.latitude,
-		]
+		],
+		executor
 	);
 	return rows.length > 0;
 }

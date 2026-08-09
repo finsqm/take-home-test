@@ -1,5 +1,11 @@
 jest.mock("../../src/db/client", () => ({
 	withAdvisoryLock: jest.fn((_key: string, fn: () => Promise<unknown>) => fn()),
+	// Runs the callback against a fake client - the real transactional behaviour (BEGIN/
+	// COMMIT/ROLLBACK) is exercised in the e2e db-error suite, which spreads the real
+	// db/client module instead of stubbing it. Here we only care that the callback's
+	// store-and-enqueue steps run in order and that its return value/rejection propagates.
+	withTransaction: jest.fn((fn: (client: unknown) => Promise<unknown>) => fn({})),
+	pgBossExecutor: jest.fn(() => ({})),
 }));
 jest.mock("../../src/db/rawForm");
 jest.mock("../../src/db/transformedForm");
@@ -107,12 +113,14 @@ describe("processIngestionJob", () => {
 				lastName: "Doe",
 				longitude: 50.05,
 				latitude: -5.05,
-			})
+			}),
+			expect.anything()
 		);
-		expect(mockDeleteDlq).toHaveBeenCalledWith(jobData.applicationReference);
+		expect(mockDeleteDlq).toHaveBeenCalledWith(jobData.applicationReference, expect.anything());
 		expect(mockSend).toHaveBeenCalledWith(
 			EMAIL_QUEUE,
-			expect.objectContaining({ applicationReference: jobData.applicationReference, to: "happyforms@bots.com" })
+			expect.objectContaining({ applicationReference: jobData.applicationReference, to: "happyforms@bots.com" }),
+			expect.anything()
 		);
 	});
 

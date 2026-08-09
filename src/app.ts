@@ -17,7 +17,9 @@ app.post("/ingest", async (req: Request, res: Response) => {
     try {
         await insertRawForm(sessionId, applicationReference, req.body, currentTraceParent());
 
-        // Idempotent/memoized - only the very first call actually registers the workers.
+        // Idempotent/memoized (see index.ts, which also calls this at boot) - this call is
+        // the belt-and-suspenders case for an instance whose consumers didn't start at boot
+        // for some reason; it's a no-op once they're already running.
         await startConsumers();
 
         const boss = await getBoss();

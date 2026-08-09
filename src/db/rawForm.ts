@@ -15,8 +15,14 @@ export async function insertRawForm(
 	payload: unknown,
 	traceContext: string | undefined
 ): Promise<void> {
+	// ON CONFLICT DO NOTHING makes this idempotent under the case the 3rd party retries
+	// the exact same delivery (same session_id) after e.g. a client-side timeout - without
+	// it, the UNIQUE constraint on session_id would throw and the caller would see a 500
+	// for what is actually a harmless duplicate of an already-accepted form.
 	await query(
-		`INSERT INTO raw_form (session_id, application_reference, payload, trace_context) VALUES ($1, $2, $3, $4)`,
+		`INSERT INTO raw_form (session_id, application_reference, payload, trace_context)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (session_id) DO NOTHING`,
 		[sessionId, applicationReference, payload, traceContext ?? null]
 	);
 }
